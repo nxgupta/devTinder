@@ -3,17 +3,21 @@ const {connectDb} = require("./config/database")
 const {UserModel} = require("./models/user")
 const {excludeUpdates} = require("./utils/enums")
 const {validateSignUpData} = require("./utils/validation")
+const cookieParser = require("cookie-parser")
+const jwt = require("jsonwebtoken")
 const bcrypt = require("bcrypt")
+const {userAuth} = require("./middlewares/auth")
 require("dotenv").config()
 const app = express()
 
 app.use(express.json())
 app.use(express.urlencoded({extended: true}))
+app.use(cookieParser())
 
 app.post("/signup", async (req, res) => {
   try {
     validateSignUpData(req)
-    let {firstName, lastName, emailId, password, age, gender} = req.body
+    let {firstName, lastName, emailId, password} = req.body
     let hashedPassword = await bcrypt.hash(password, 10)
     const user = new UserModel({firstName, lastName, emailId, password: hashedPassword})
     await user.save()
@@ -28,22 +32,24 @@ app.post("/login", async (req, res) => {
     let {emailId, password} = req.body
     let user = await UserModel.findOne({emailId})
     if (!user) {
-      res.status(400).send("invalid credentials")
+      return res.status(400).send("invalid credentials")
     }
-    let isValidPassoword = await bcrypt.compare(password, user.password)
+    let isValidPassoword = await user.validatePassword(password)
     if (!isValidPassoword) {
-      res.status(400).send("invalid credentials")
+      return res.status(400).send("invalid credentials")
     }
-    res.status(200).send("user logged in")
-  } catch {
-    ;(err) => res.status(400).send("Error: " + err.message)
+    let token = await user.getJWT()
+    res.cookie("token", token, {expires: new Date(Date.now() + 60000 * 60)})
+    return res.status(200).send("user logged in")
+  } catch (err) {
+    res.status(400).send("Error: " + err.message)
   }
 })
 
-app.get("/user", async (req, res) => {
+app.get("/user", userAuth, async (req, res) => {
   try {
-    let {emailId} = req.body
-    let user = await UserModel.findOne({emailId})
+    let {_id} = req.user
+    let user = await UserModel.findOne({_id})
     res.json(user)
   } catch (error) {
     console.log("error occured while getting user", error.message)
@@ -85,6 +91,10 @@ app.get("/feed", async (req, res) => {
     console.log("error occured while getting users", error.message)
     res.send("Something went wrong")
   }
+})
+
+app.post("/sendConnectionRequest", (req, res) => {
+  res.send("connection request accepetd")
 })
 
 connectDb()
