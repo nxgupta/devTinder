@@ -1,16 +1,15 @@
-const {type} = require("express/lib/response")
 const mongoose = require("mongoose")
-const {allowedGenders} = require("../utils/enums")
 const validator = require("validator")
 const jwt = require("jsonwebtoken")
-let bcrypt = require("bcrypt")
-let userSchema = new mongoose.Schema(
+const bcrypt = require("bcrypt")
+
+const userSchema = new mongoose.Schema(
   {
     firstName: {
       type: String,
       required: true,
       minLength: 4,
-      maxLength: 8,
+      maxLength: 50,
     },
     lastName: {
       type: String,
@@ -21,22 +20,20 @@ let userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
-      validate: [
-        (value) => {
-          return validator.isEmail(value)
-        },
-        "Please enter a valid email",
-      ],
+      validate(value) {
+        if (!validator.isEmail(value)) {
+          throw new Error("Invalid email address: " + value)
+        }
+      },
     },
     password: {
       type: String,
       required: true,
-      validate: [
-        (value) => {
-          return validator.isStrongPassword(value)
-        },
-        "Please enter a valid password",
-      ],
+      validate(value) {
+        if (!validator.isStrongPassword(value)) {
+          throw new Error("Enter a Strong Password: " + value)
+        }
+      },
     },
     age: {
       type: Number,
@@ -44,29 +41,21 @@ let userSchema = new mongoose.Schema(
     },
     gender: {
       type: String,
-      enums: allowedGenders,
-      validate(value) {
-        if (!allowedGenders.includes(value)) {
-          throw new Error("Entered gender is not allowed")
-        }
+      enum: {
+        values: ["male", "female", "other"],
+        message: `{VALUE} is not a valid gender type`,
       },
-    },
-    about: {
-      type: String,
-      default: "default about",
     },
     photoUrl: {
       type: String,
-      default: "",
+      default: "https://geographyandyou.com/images/user-profile.png",
+    },
+    about: {
+      type: String,
+      default: "This is a default about of the user!",
     },
     skills: {
       type: [String],
-      validate: [
-        (value) => {
-          return value.length <= 3
-        },
-        `only 3 skills allowed`,
-      ],
     },
   },
   {
@@ -76,15 +65,21 @@ let userSchema = new mongoose.Schema(
 
 userSchema.methods.getJWT = async function () {
   const user = this
-  return await jwt.sign({_id: user._id}, process.env.JWT_SECRET, {expiresIn: process.env.JWT_EXPIRES_IN})
+
+  const token = await jwt.sign({_id: user._id}, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  })
+
+  return token
 }
 
-userSchema.methods.validatePassword = async function (password) {
-  let user = this
-  return await bcrypt.compare(password, user.password)
+userSchema.methods.validatePassword = async function (passwordInputByUser) {
+  const user = this
+  const passwordHash = user.password
+
+  const isPasswordValid = await bcrypt.compare(passwordInputByUser, passwordHash)
+
+  return isPasswordValid
 }
 
-const UserModel = mongoose.model("user", userSchema)
-module.exports = {
-  UserModel,
-}
+module.exports = mongoose.model("User", userSchema)
