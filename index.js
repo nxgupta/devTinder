@@ -3,6 +3,7 @@ const {connectDb} = require("./config/database")
 const {UserModel} = require("./models/user")
 const {excludeUpdates} = require("./utils/enums")
 const {validateSignUpData} = require("./utils/validation")
+const bcrypt = require("bcrypt")
 require("dotenv").config()
 const app = express()
 
@@ -12,11 +13,30 @@ app.use(express.urlencoded({extended: true}))
 app.post("/signup", async (req, res) => {
   try {
     validateSignUpData(req)
-    const user = new UserModel({firstName, lastName, emailId, password, age, gender})
+    let {firstName, lastName, emailId, password, age, gender} = req.body
+    let hashedPassword = await bcrypt.hash(password, 10)
+    const user = new UserModel({firstName, lastName, emailId, password: hashedPassword})
     await user.save()
     res.status(201).send("user created successfuly")
   } catch (err) {
     res.status(400).send("ERROR : " + err.message)
+  }
+})
+
+app.post("/login", async (req, res) => {
+  try {
+    let {emailId, password} = req.body
+    let user = await UserModel.findOne({emailId})
+    if (!user) {
+      res.status(400).send("invalid credentials")
+    }
+    let isValidPassoword = await bcrypt.compare(password, user.password)
+    if (!isValidPassoword) {
+      res.status(400).send("invalid credentials")
+    }
+    res.status(200).send("user logged in")
+  } catch {
+    ;(err) => res.status(400).send("Error: " + err.message)
   }
 })
 
